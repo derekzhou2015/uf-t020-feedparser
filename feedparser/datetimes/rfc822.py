@@ -54,6 +54,18 @@ timezone_names = {
     "mest": 2,
 }
 day_names = {"mon", "tue", "wed", "thu", "fri", "sat", "sun"}
+
+
+def _looks_like_time(value):
+    """Return True if `value` can only be a time, never a timezone.
+
+    Times always begin with a digit, while timezones are either signed
+    offsets ('+0000') or alphabetic names ('GMT', 'EST', 'UTC').
+    """
+
+    return value[:1].isdigit()
+
+
 months = {
     "jan": 1,
     "feb": 2,
@@ -79,6 +91,8 @@ def _parse_date_rfc822(date):
     2. The month and day can be swapped.
     3. Additional timezone names are supported.
     4. A default time and timezone are assumed if only a date is present.
+    5. A default time is assumed if the date is followed by a timezone only,
+       and a default timezone if it is followed by a time only.
 
     :param str date: a date/time string that will be converted to a time tuple
     :returns: a UTC time tuple, or None
@@ -86,16 +100,30 @@ def _parse_date_rfc822(date):
     """
 
     parts = date.lower().split()
-    if len(parts) < 5:
-        # Assume that the time and timezone are missing
-        parts.extend(("00:00:00", "0000"))
-    # Remove the day name
+    if not parts:
+        return None
+    # Remove the day name.
     if parts[0][:3] in day_names:
         # Comma without spaces:
         # 'Fri,24 Nov 2023 18:28:36 -0000'
         if "," in parts[0] and parts[0][-1] != ",":
             parts.insert(1, parts[0].rpartition(",")[2])
         parts = parts[1:]
+    # The day name must be removed before the defaults are applied.
+    # Doing it the other way around meant that a weekday combined with
+    # only a time ('Fri, 24 Nov 2023 18:28:36') or only a timezone
+    # ('Fri, 24 Nov 2023 +0000') went on to be rejected below.
+    if len(parts) == 3:
+        # Assume that both the time and timezone are missing.
+        parts.extend(("00:00:00", "0000"))
+    elif len(parts) == 4:
+        # Exactly one of the time and timezone is missing.
+        if _looks_like_time(parts[3]):
+            # Only the timezone is missing.
+            parts.append("0000")
+        else:
+            # Only the time is missing.
+            parts.insert(3, "00:00:00")
     if len(parts) < 5:
         # If there are still fewer than five parts, there's not enough
         # information to interpret this.

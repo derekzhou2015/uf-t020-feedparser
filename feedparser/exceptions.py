@@ -32,6 +32,7 @@ __all__ = [
     "CharacterEncodingUnknown",
     "NonXMLContentType",
     "UndeclaredNamespace",
+    "DateParseWarning",
 ]
 
 
@@ -53,3 +54,12 @@ class NonXMLContentType(FeedparserError):
 
 class UndeclaredNamespace(Exception):
     pass
+
+
+class DateParseWarning(UserWarning):
+    """Emitted when a date element could not be parsed by any date handler.
+
+    The ``*_parsed`` value is ``None`` (or absent for JSON feeds), but the
+    original date string remains available, so this warning gives callers a
+    way to notice and handle failed dates instead of losing them silently.
+    """

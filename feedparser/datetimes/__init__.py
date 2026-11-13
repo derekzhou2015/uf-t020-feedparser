@@ -25,9 +25,11 @@
 # ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
 
+import warnings
 from collections.abc import Callable
 from time import struct_time
 
+from ..exceptions import DateParseWarning
 from .asctime import _parse_date_asctime
 from .greek import _parse_date_greek
 from .hungarian import _parse_date_hungarian
@@ -59,6 +61,14 @@ def _parse_date(date_string):
         if len(date9tuple) != 9:
             continue
         return date9tuple
+    # No handler could make sense of this date. Never let the *_parsed value
+    # disappear silently: warn so callers have a signal they can act on.
+    warnings.warn(
+        f"Unable to parse date {date_string!r}: "
+        "the corresponding *_parsed value will be None.",
+        DateParseWarning,
+        stacklevel=2,
+    )
     return None
 
 

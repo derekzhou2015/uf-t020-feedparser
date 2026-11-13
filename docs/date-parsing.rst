@@ -165,10 +165,20 @@ registration.)
 If your date handler returns ``None``, or anything other than a
 :program:`Python` 9-tuple date, or raises an exception of any kind, the error
 will be silently ignored and the other registered date handlers will be tried
-in order.  If no date handlers succeed, then the date is not parsed, and the
-\*_parsed value will not be present in the results dictionary.  The original
-date string will still be available in the appropriate element in the results
-dictionary.
+in order.  If no date handlers succeed, then the date is not parsed, the
+\*_parsed value is set to ``None``, and a
+:class:`feedparser.DateParseWarning` is emitted.  The original date string
+will still be available in the appropriate element in the results dictionary.
+
+The warning makes failed dates observable, so callers no longer have to
+notice them downstream.  It can be turned into an error, filtered by category,
+or suppressed entirely using the standard :mod:`warnings` machinery::
+
+    import warnings
+    import feedparser
+
+    # Treat unparseable dates as fatal instead of silently recording None.
+    warnings.filterwarnings("error", category=feedparser.DateParseWarning)
 
 
 ..  tip::

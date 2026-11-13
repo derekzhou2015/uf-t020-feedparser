@@ -1,5 +1,8 @@
+import warnings
+
 import pytest
 
+import feedparser
 from feedparser.datetimes import (
     _parse_date,
     _parse_date_asctime,
@@ -205,6 +208,56 @@ def test_year_10000_date():
             "Fri,24 Nov 2023 18:28:36 -0000",
             (2023, 11, 24, 18, 28, 36, 4, 328, 0),
         ),
+        # Every combination of a present/absent weekday with a
+        # present/absent time and timezone. The weekday variants that had
+        # neither a time nor a timezone already worked; the ones missing
+        # only the time or only the timezone used to be rejected.
+        (
+            _parse_date_rfc822,
+            "Fri, 24 Nov 2023 18:28:36 +0000",
+            (2023, 11, 24, 18, 28, 36, 4, 328, 0),
+        ),  # weekday, time, timezone
+        (
+            _parse_date_rfc822,
+            "Fri, 24 Nov 2023",
+            (2023, 11, 24, 0, 0, 0, 4, 328, 0),
+        ),  # weekday, neither time nor timezone
+        (
+            _parse_date_rfc822,
+            "24 Nov 2023 18:28:36",
+            (2023, 11, 24, 18, 28, 36, 4, 328, 0),
+        ),  # no weekday, time, no timezone
+        (
+            _parse_date_rfc822,
+            "24 Nov 2023 +0000",
+            (2023, 11, 24, 0, 0, 0, 4, 328, 0),
+        ),  # no weekday, no time, timezone
+        (
+            _parse_date_rfc822,
+            "Fri, 24 Nov 2023 18:28:36",
+            (2023, 11, 24, 18, 28, 36, 4, 328, 0),
+        ),  # weekday, time, no timezone
+        (
+            _parse_date_rfc822,
+            "Fri, 24 Nov 2023 +0000",
+            (2023, 11, 24, 0, 0, 0, 4, 328, 0),
+        ),  # weekday, no time, timezone
+        # The same missing-time combinations with a named timezone
+        (
+            _parse_date_rfc822,
+            "Fri, 24 Nov 2023 GMT",
+            (2023, 11, 24, 0, 0, 0, 4, 328, 0),
+        ),  # weekday, no time, known timezone name
+        (
+            _parse_date_rfc822,
+            "Fri, 24 Nov 2023 UTC",
+            (2023, 11, 24, 0, 0, 0, 4, 328, 0),
+        ),  # weekday, no time, unknown timezone name
+        (
+            _parse_date_rfc822,
+            "24 Nov 2023 GMT",
+            (2023, 11, 24, 0, 0, 0, 4, 328, 0),
+        ),  # no weekday, no time, named timezone
         (_parse_date_rfc822, "Sun, 16 Dec 2012 1:2:3:4 GMT", None),  # invalid time
         (_parse_date_rfc822, "Sun, 16 zzz 2012 11:47:32 GMT", None),  # invalid month
         (
@@ -321,3 +374,60 @@ def test_year_10000_date():
 def test_date_parser(parse_date, input_value, expected_value):
     parsed_value = parse_date(input_value)
     assert parsed_value == expected_value
+
+
+@pytest.mark.parametrize(
+    "input_value",
+    (
+        "not-a-date",
+        "Mon, 32 Jan 2023 00:00:00 GMT",
+        "Sun, 99 Jun 2009 12:00:00 GMT",
+    ),
+)
+def test_unparseable_date_warns(input_value):
+    """Failed dates must not disappear silently."""
+
+    with pytest.warns(feedparser.DateParseWarning, match="Unable to parse date"):
+        assert _parse_date(input_value) is None
+
+
+def test_parsed_date_does_not_warn():
+    """Supported dates must not trigger the failure signal."""
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        for value in (
+            "Fri, 24 Nov 2023 18:28:36",
+            "Fri, 24 Nov 2023 +0000",
+            "2003-12-31T10:14:55Z",
+        ):
+            assert _parse_date(value) is not None
+
+
+def test_empty_date_does_not_warn():
+    """A missing date element is not a parse failure."""
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        assert _parse_date("") is None
+        assert _parse_date(None) is None
+
+
+def test_unparseable_date_in_feed_warns():
+    """The warning fires through a real parse() call, not just the helper."""
+
+    feed = """<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0">
+<channel>
+<item>
+<pubDate>not-a-date</pubDate>
+</item>
+</channel>
+</rss>"""
+
+    with pytest.warns(feedparser.DateParseWarning):
+        result = feedparser.parse(feed)
+
+    # The parsed value is present but None, and the original string is kept.
+    assert result["entries"][0]["published_parsed"] is None
+    assert result["entries"][0]["published"] == "not-a-date"
